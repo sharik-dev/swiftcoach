@@ -2,40 +2,31 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var appState: AppState
-    @EnvironmentObject private var aiViewModel: AIViewModel
+    @EnvironmentObject private var chatVM: ChatViewModel
 
     var body: some View {
-        if !appState.selectedProvider.requiresLocalModel || appState.modelLoadingState == .loaded {
-            AssistantWorkspaceView(appState: appState, aiViewModel: aiViewModel)
+        if appState.modelLoadingState == .loaded {
+            MainView()
         } else {
             ModelDownloadView(
                 state: appState.modelLoadingState,
                 selectedModel: appState.selectedModelSize,
-                retry: reloadModel
+                retry: retryLoad
             )
         }
     }
 
-    private func reloadModel() {
-        guard appState.selectedProvider.requiresLocalModel else {
-            appState.modelLoadingState = .loaded
-            return
-        }
-
-        let modelID = appState.selectedModelSize.rawValue
+    private func retryLoad() {
         appState.modelLoadingState = .downloading(progress: 0)
-
-        aiViewModel.ensureModelLoaded(
-            modelID: modelID,
-            progressHandler: { progress in
+        chatVM.loadModel(
+            modelID: appState.selectedModelSize.rawValue,
+            onProgress: { progress in
                 Task { @MainActor in
                     appState.modelLoadingState = progress >= 1 ? .loaded : .downloading(progress: progress)
                 }
             },
-            failureHandler: { message in
-                Task { @MainActor in
-                    appState.modelLoadingState = .failed(message)
-                }
+            onFailure: { msg in
+                Task { @MainActor in appState.modelLoadingState = .failed(msg) }
             }
         )
     }
@@ -44,5 +35,5 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .environmentObject(AppState())
-        .environmentObject(AIViewModel())
+        .environmentObject(ChatViewModel())
 }

@@ -3,38 +3,30 @@ import SwiftUI
 @main
 struct swiftcoachApp: App {
     @StateObject private var appState = AppState()
-    @StateObject private var aiViewModel = AIViewModel()
+    @StateObject private var chatVM = ChatViewModel()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
-                .environmentObject(aiViewModel)
-                .task(id: appState.configurationToken) {
-                    if appState.selectedProvider.requiresLocalModel {
-                        let modelID = appState.selectedModelSize.rawValue
-                        appState.modelLoadingState = .downloading(progress: 0)
-
-                        aiViewModel.ensureModelLoaded(
-                            modelID: modelID,
-                            progressHandler: { progress in
-                                Task { @MainActor in
-                                    appState.modelLoadingState = progress >= 1 ? .loaded : .downloading(progress: progress)
-                                }
-                            },
-                            failureHandler: { message in
-                                Task { @MainActor in
-                                    appState.modelLoadingState = .failed(message)
-                                }
+                .environmentObject(chatVM)
+                .task(id: appState.selectedModelSize.rawValue) {
+                    appState.modelLoadingState = .downloading(progress: 0)
+                    chatVM.loadModel(
+                        modelID: appState.selectedModelSize.rawValue,
+                        onProgress: { progress in
+                            Task { @MainActor in
+                                appState.modelLoadingState = progress >= 1
+                                    ? .loaded
+                                    : .downloading(progress: progress)
                             }
-                        )
-                    } else {
-                        appState.modelLoadingState = .loaded
-                        await aiViewModel.refreshRemoteProviders(
-                            baseURL: appState.backendBaseURL,
-                            selectedProviderID: appState.selectedProvider.remoteProviderID
-                        )
-                    }
+                        },
+                        onFailure: { msg in
+                            Task { @MainActor in
+                                appState.modelLoadingState = .failed(msg)
+                            }
+                        }
+                    )
                 }
         }
     }
