@@ -84,54 +84,69 @@ final class AIViewModel: ObservableObject {
         lastError = nil
         isThinking = true
 
-        let prompt = PromptBuilder.build(task: task, codeContext: codeContext, languageHint: languageHint)
-
         streamTask = Task {
             defer { isThinking = false }
 
             do {
-                if provider.requiresLocalModel {
-                    guard let service = localService, service.isModelReady else {
-                        lastError = "The local model is not ready."
-                        return
-                    }
-
-                    var accumulated = ""
-                    let tokenStream = service.stream(systemPrompt: PromptBuilder.systemPrompt, prompt: prompt)
-
-                    for await token in tokenStream {
-                        guard !Task.isCancelled else { return }
-                        accumulated += token
-                        output = sanitize(accumulated)
-                    }
-
-                    if accumulated.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        lastError = "No response produced by the local model."
-                    }
-                } else {
-                    guard let remoteProviderID = provider.remoteProviderID else {
-                        lastError = "Invalid backend provider selection."
-                        return
-                    }
-
-                    let response = try await remoteService.generate(
-                        baseURL: backendBaseURL,
-                        provider: remoteProviderID,
-                        systemPrompt: PromptBuilder.systemPrompt,
-                        prompt: prompt
-                    )
-                    output = sanitize(response.output)
-
-                    if output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        lastError = "No response produced by the backend provider."
-                    }
-                }
+                output = try await requestResponse(
+                    task: task,
+                    codeContext: codeContext,
+                    provider: provider,
+                    backendBaseURL: backendBaseURL,
+                    languageHint: languageHint
+                )
             } catch is CancellationError {
                 return
             } catch {
                 lastError = error.localizedDescription
             }
         }
+    }
+
+    func requestResponse(
+        task: String,
+        codeContext: String,
+        provider: AppState.AIProvider,
+        backendBaseURL: String,
+        languageHint: String = "French"
+    ) async throws -> String {
+        let prompt = PromptBuilder.build(task: task, codeContext: codeContext, languageHint: languageHint)
+
+        if provider.requiresLocalModel {
+            guard let service = localService, service.isModelReady else {
+                throw NSError(domain: "AIViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "The local model is not ready."])
+            }
+
+            var accumulated = ""
+            let tokenStream = service.stream(systemPrompt: PromptBuilder.systemPrompt, prompt: prompt)
+
+            for await token in tokenStream {
+                guard !Task.isCancelled else { throw CancellationError() }
+                accumulated += token
+            }
+
+            let sanitized = sanitize(accumulated)
+            if sanitized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                throw NSError(domain: "AIViewModel", code: 2, userInfo: [NSLocalizedDescriptionKey: "No response produced by the local model."])
+            }
+            return sanitized
+        }
+
+        guard let remoteProviderID = provider.remoteProviderID else {
+            throw NSError(domain: "AIViewModel", code: 3, userInfo: [NSLocalizedDescriptionKey: "Invalid backend provider selection."])
+        }
+
+        let response = try await remoteService.generate(
+            baseURL: backendBaseURL,
+            provider: remoteProviderID,
+            systemPrompt: PromptBuilder.systemPrompt,
+            prompt: prompt
+        )
+        let sanitized = sanitize(response.output)
+        if sanitized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw NSError(domain: "AIViewModel", code: 4, userInfo: [NSLocalizedDescriptionKey: "No response produced by the backend provider."])
+        }
+        return sanitized
     }
 
     func cancelStream() {

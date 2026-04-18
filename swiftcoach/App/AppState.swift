@@ -25,6 +25,7 @@ final class AppState: ObservableObject {
     @Published var modelLoadingState: ModelLoadingState = .notLoaded
     @Published var selectedProvider: AIProvider = .local
     @Published var selectedModelSize: ModelSize = .balanced
+    @Published var exerciseDataSource: ExerciseDataSource = .demo
     @Published var backendBaseURL: String = "http://127.0.0.1:3000"
     @Published var inferenceDelay: Double = 1.2
     @Published var autoRunEnabled = true
@@ -81,6 +82,25 @@ final class AppState: ObservableObject {
                 return "claude"
             case .gemma:
                 return "gemma"
+            }
+        }
+    }
+
+    enum ExerciseDataSource: String, CaseIterable, Identifiable {
+        case demo
+        case remote
+        case local
+
+        var id: String { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .demo:
+                return "Demo"
+            case .remote:
+                return "Remote"
+            case .local:
+                return "Local"
             }
         }
     }

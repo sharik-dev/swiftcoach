@@ -1,13 +1,10 @@
 import SwiftUI
 
 struct FeedbackPanelView: View {
-    let state: CoachState
-    let annotations: [Annotation]
-    @Binding var tab: CoachViewModel.FeedbackTab
-    let onHint: () -> Void
+    @ObservedObject var coachVM: CoachViewModel
 
     private var summary: (tone: SCPillTone, title: String, body: String) {
-        switch state {
+        switch coachVM.coachState {
         case .error:
             return (.red, "Build échoué", "Une erreur de syntaxe bloque la compilation. Je l'ai pointée dans le code.")
         case .success:
@@ -47,9 +44,9 @@ struct FeedbackPanelView: View {
 
             // Tabs
             HStack(spacing: 0) {
-                FeedbackTab(label: "Revue", badge: annotations.isEmpty ? nil : "\(annotations.count)",
-                            active: tab == .review) { tab = .review }
-                FeedbackTab(label: "Chat", badge: nil, active: tab == .chat) { tab = .chat }
+                FeedbackTabButton(label: "Revue", badge: coachVM.annotations.isEmpty ? nil : "\(coachVM.annotations.count)",
+                            active: coachVM.feedbackTab == .review) { coachVM.feedbackTab = .review }
+                FeedbackTabButton(label: "Chat", badge: "\(coachVM.chatThread.count)", active: coachVM.feedbackTab == .chat) { coachVM.feedbackTab = .chat }
             }
             .padding(.horizontal, 10)
             .overlay(alignment: .bottom) {
@@ -58,11 +55,20 @@ struct FeedbackPanelView: View {
 
             // Content
             ScrollView {
-                if tab == .review {
-                    ReviewTabContent(annotations: annotations, state: state, onHint: onHint)
+                if coachVM.feedbackTab == .review {
+                    ReviewTabContent(
+                        annotations: coachVM.annotations,
+                        state: coachVM.coachState,
+                        hints: coachVM.progressiveHints,
+                        onHint: coachVM.requestHint
+                    )
                         .padding(12)
                 } else {
-                    ChatTabContent(state: state)
+                    ChatTabContent(
+                        messages: coachVM.chatThread,
+                        draftMessage: $coachVM.draftMessage,
+                        onSend: coachVM.sendMessage
+                    )
                         .padding(12)
                 }
             }
@@ -70,7 +76,7 @@ struct FeedbackPanelView: View {
     }
 }
 
-private struct FeedbackTab: View {
+private struct FeedbackTabButton: View {
     let label: String
     let badge: String?
     let active: Bool
@@ -109,6 +115,7 @@ private struct FeedbackTab: View {
 private struct ReviewTabContent: View {
     let annotations: [Annotation]
     let state: CoachState
+    let hints: [String]
     let onHint: () -> Void
 
     var body: some View {
@@ -121,6 +128,17 @@ private struct ReviewTabContent: View {
                     Text("Compile ton code pour déclencher une revue.")
                         .font(.system(size: 12))
                         .foregroundStyle(Color.scInk4)
+                    if state == .writing {
+                        Button("Demander un indice", action: onHint)
+                            .font(.system(size: 12).weight(.medium))
+                            .foregroundStyle(Color.black)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.scAccent)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .buttonStyle(.plain)
+                            .padding(.top, 8)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 32)
@@ -131,7 +149,7 @@ private struct ReviewTabContent: View {
             }
 
             if state == .hint {
-                HintSectionView()
+                HintSectionView(hints: hints)
             }
         }
     }
@@ -175,6 +193,8 @@ struct ReviewItemView: View {
 }
 
 private struct HintSectionView: View {
+    let hints: [String]
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("INDICES PROGRESSIFS")
@@ -206,35 +226,39 @@ private struct HintSectionView: View {
 }
 
 private struct ChatTabContent: View {
-    let state: CoachState
-
-    private var messages: [CoachMessage] {
-        switch state {
-        case .error:
-            return [
-                CoachMessage(who: .coach, text: "Le parseur Swift s'arrête ligne 5 : après un `if let … = expr`, il veut explicitement le `{`. Ajoute-le et relance.", time: "maintenant"),
-                CoachMessage(who: .user, text: "Corrigé, merci.", time: "maintenant"),
-            ]
-        case .success:
-            return [
-                CoachMessage(who: .coach, text: "Bravo, la logique est bonne. Renomme `n`/`i` pour la lisibilité, et interroge-toi sur le type de retour si aucune solution n'existe.", time: "maintenant"),
-            ]
-        case .resolved:
-            return [
-                CoachMessage(who: .coach, text: "Parfait. On enchaîne sur une variante : Three Sum. Tu veux que je charge l'énoncé ?", time: "maintenant"),
-            ]
-        default:
-            return [
-                CoachMessage(who: .coach, text: "J'ai chargé l'énoncé. Prends le temps de lire, commence quand tu veux.", time: "14:02"),
-            ]
-        }
-    }
+    let messages: [CoachMessage]
+    @Binding var draftMessage: String
+    let onSend: (String) -> Void
 
     var body: some View {
         VStack(spacing: 14) {
             ForEach(messages) { msg in
                 ChatBubbleView(msg: msg)
             }
+
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField("Pose une question au coach…", text: $draftMessage, axis: .vertical)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.scInk)
+                    .lineLimit(1...4)
+                    .textFieldStyle(.plain)
+
+                Button {
+                    onSend(draftMessage)
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 12).weight(.bold))
+                        .foregroundStyle(draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.scInk3 : Color.black)
+                        .frame(width: 30, height: 30)
+                        .background(draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.scBg4 : Color.scAccent)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .disabled(draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(10)
+            .background(Color.scBg2)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
         }
     }
 }
@@ -286,6 +310,7 @@ struct CoachAvatarView: View {
 
 struct ConsolePanelView: View {
     let lines: [ConsoleLine]
+    let onClear: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -298,9 +323,12 @@ struct ConsolePanelView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(Color.scInk4)
                 Spacer()
-                Text("clear ⌫")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(Color.scInk4)
+                Button("clear ⌫") {
+                    onClear?()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Color.scInk4)
             }
             .padding(.horizontal, 12)
             .frame(height: 30)

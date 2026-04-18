@@ -24,6 +24,8 @@
 		11000000000000000000000F /* CodeEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21000000000000000000000F /* CodeEditorView.swift */; };
 		110000000000000000000010 /* FeedbackPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000010 /* FeedbackPanelView.swift */; };
 		110000000000000000000011 /* SwiftToolbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000011 /* SwiftToolbarView.swift */; };
+		110000000000000000000012 /* BackendAPIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000012 /* BackendAPIModels.swift */; };
+		110000000000000000000013 /* CoachDemoData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000013 /* CoachDemoData.swift */; };
 		3023D7943E3EFAC5536014FC /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFC5725F4D440C50BF415963 /* ContentView.swift */; };
 		310000000000000000000001 /* LocalLLMClient in Frameworks */ = {isa = PBXBuildFile; productRef = 510000000000000000000001 /* LocalLLMClient */; };
 		310000000000000000000002 /* LocalLLMClientMLX in Frameworks */ = {isa = PBXBuildFile; productRef = 510000000000000000000002 /* LocalLLMClientMLX */; };
@@ -50,6 +52,8 @@
 		21000000000000000000000F /* CodeEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeEditorView.swift; sourceTree = "<group>"; };
 		210000000000000000000010 /* FeedbackPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackPanelView.swift; sourceTree = "<group>"; };
 		210000000000000000000011 /* SwiftToolbarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftToolbarView.swift; sourceTree = "<group>"; };
+		210000000000000000000012 /* BackendAPIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendAPIModels.swift; sourceTree = "<group>"; };
+		210000000000000000000013 /* CoachDemoData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachDemoData.swift; sourceTree = "<group>"; };
 		29DFC68B0F1D355F81E749B3 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		39D7834AB9DC0A9A55C4C758 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CFC5725F4D440C50BF415963 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -92,6 +96,7 @@
 				210000000000000000000002 /* LLMServiceProtocol.swift */,
 				210000000000000000000003 /* LocalLLMService.swift */,
 				210000000000000000000009 /* RemoteLLMService.swift */,
+				210000000000000000000012 /* BackendAPIModels.swift */,
 				210000000000000000000004 /* PromptBuilder.swift */,
 			);
 			path = Services;
@@ -137,6 +142,14 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
+		410000000000000000000007 /* Demo */ = {
+			isa = PBXGroup;
+			children = (
+				210000000000000000000013 /* CoachDemoData.swift */,
+			);
+			path = Demo;
+			sourceTree = "<group>";
+		};
 		ABA5E59B104507CAF54384E7 /* swiftcoach */ = {
 			isa = PBXGroup;
 			children = (
@@ -146,6 +159,7 @@
 				410000000000000000000004 /* Views */,
 				410000000000000000000005 /* Theme */,
 				410000000000000000000006 /* Models */,
+				410000000000000000000007 /* Demo */,
 				DBFA93A0B36BF9FB086E7D89 /* swiftcoachApp.swift */,
 				CFC5725F4D440C50BF415963 /* ContentView.swift */,
 				39D7834AB9DC0A9A55C4C758 /* Assets.xcassets */,
@@ -256,8 +270,10 @@
 				110000000000000000000009 /* RemoteLLMService.swift in Sources */,
 				110000000000000000000008 /* ModelDownloadView.swift in Sources */,
 				110000000000000000000004 /* PromptBuilder.swift in Sources */,
+				110000000000000000000012 /* BackendAPIModels.swift in Sources */,
 				11000000000000000000000A /* Theme.swift in Sources */,
 				11000000000000000000000B /* ExerciseModel.swift in Sources */,
+				110000000000000000000013 /* CoachDemoData.swift in Sources */,
 				11000000000000000000000C /* CoachViewModel.swift in Sources */,
 				11000000000000000000000D /* CoachSidebarView.swift in Sources */,
 				11000000000000000000000E /* ExerciseBriefView.swift in Sources */,

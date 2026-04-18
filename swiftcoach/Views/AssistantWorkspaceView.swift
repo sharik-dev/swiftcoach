@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - Root workspace
+
 struct AssistantWorkspaceView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var aiViewModel: AIViewModel
@@ -9,6 +11,20 @@ struct AssistantWorkspaceView: View {
 
     init(appState: AppState, aiViewModel: AIViewModel) {
         _editorViewModel = StateObject(wrappedValue: EditorViewModel(aiViewModel: aiViewModel, appState: appState))
+        _coachVM = StateObject(
+            wrappedValue: CoachViewModel(
+                dataSource: appState.exerciseDataSource,
+                aiResponder: { task, codeContext in
+                    try await aiViewModel.requestResponse(
+                        task: task,
+                        codeContext: codeContext,
+                        provider: appState.selectedProvider,
+                        backendBaseURL: appState.backendBaseURL,
+                        languageHint: "French"
+                    )
+                }
+            )
+        )
     }
 
     var body: some View {
@@ -20,40 +36,60 @@ struct AssistantWorkspaceView: View {
     }
 }
 
-// MARK: - Desktop (iPad / Mac)
+// MARK: - Desktop (iPad)
 
 private struct DesktopLayout: View {
     @ObservedObject var coachVM: CoachViewModel
     @State private var annotationStyle: CodeEditorView.AnnotationStyle = .inline
-    @State private var feedbackPosition: FeedbackPosition = .right
-
-    enum FeedbackPosition { case right, bottom, overlay }
+    @State private var showSidebar = true
 
     var body: some View {
         HStack(spacing: 0) {
-            // Sidebar
-            CoachSidebarView(vm: coachVM)
-                .frame(width: 300)
-                .overlay(alignment: .trailing) {
-                    Divider().background(Color.scLineSoft)
-                }
+            // Sidebar toggle + sidebar
+            if showSidebar {
+                CoachSidebarView(vm: coachVM)
+                    .frame(width: 300)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+                    .overlay(alignment: .trailing) {
+                        Divider().background(Color.scLineSoft)
+                    }
+            }
 
-            // Center: editor + console
+            // Center column
             VStack(spacing: 0) {
-                ExerciseBriefView(exercise: coachVM.exercise)
-                    .padding(16)
+                // Top toolbar
+                DesktopToolbar(
+                    coachVM: coachVM,
+                    annotationStyle: $annotationStyle,
+                    showSidebar: $showSidebar
+                )
 
-                // Editor card
+                ScrollView {
+                    ExerciseBriefView(exercise: coachVM.exercise)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                }
+                .frame(maxHeight: 260)
+
+                // Editor + console
                 VStack(spacing: 0) {
                     EditorTabBar(coachVM: coachVM)
-                    CodeEditorView(
-                        code: coachVM.code,
-                        annotations: coachVM.annotations,
-                        annotationStyle: annotationStyle
-                    )
+
+                    if coachVM.coachState == .writing {
+                        EditableCodeEditor(coachVM: coachVM)
+                            .frame(maxHeight: .infinity)
+                    } else {
+                        CodeEditorView(
+                            code: coachVM.code,
+                            annotations: coachVM.annotations,
+                            annotationStyle: annotationStyle
+                        )
+                        .frame(maxHeight: .infinity)
+                    }
+
                     EditorActionBar(coachVM: coachVM)
-                    ConsolePanelView(lines: coachVM.consoleLines)
-                        .frame(height: 160)
+                    ConsolePanelView(lines: coachVM.consoleLines, onClear: coachVM.clearConsole)
+                        .frame(height: 150)
                 }
                 .background(Color.scBg)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -62,32 +98,121 @@ private struct DesktopLayout: View {
                         .strokeBorder(Color.scLineSoft, lineWidth: 1)
                 )
                 .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+                .padding(.vertical, 12)
             }
-            .frame(maxWidth: .infinity)
             .background(Color.scShell)
 
-            // Feedback panel
-            if feedbackPosition == .right {
-                VStack(spacing: 0) {
-                    FeedbackPanelView(
-                        state: coachVM.coachState,
-                        annotations: coachVM.annotations,
-                        tab: $coachVM.feedbackTab,
-                        onHint: coachVM.requestHint
-                    )
-                }
-                .frame(width: 360)
-                .background(Color(hex: "14141a"))
-                .overlay(alignment: .leading) {
-                    Divider().background(Color.scLineSoft)
-                }
+            // Feedback side panel
+            VStack(spacing: 0) {
+                FeedbackPanelView(coachVM: coachVM)
+            }
+            .frame(width: 340)
+            .background(Color(hex: "14141a"))
+            .overlay(alignment: .leading) {
+                Divider().background(Color.scLineSoft)
             }
         }
         .background(Color.scShell)
-        .overlay(alignment: .bottomLeading) {
-            StatePickerView(coachVM: coachVM)
-                .padding(16)
+        .animation(.easeInOut(duration: 0.25), value: showSidebar)
+    }
+}
+
+// MARK: - Desktop toolbar
+
+private struct DesktopToolbar: View {
+    @ObservedObject var coachVM: CoachViewModel
+    @Binding var annotationStyle: CodeEditorView.AnnotationStyle
+    @Binding var showSidebar: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Sidebar toggle
+            Button {
+                withAnimation { showSidebar.toggle() }
+            } label: {
+                Image(systemName: showSidebar ? "sidebar.left" : "sidebar.left")
+                    .font(.system(size: 14))
+                    .foregroundStyle(showSidebar ? Color.scAccent : Color.scInk3)
+                    .frame(width: 30, height: 30)
+                    .background(showSidebar ? Color.scAccent.opacity(0.12) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+
+            Divider()
+                .frame(height: 18)
+                .background(Color.scLineSoft)
+
+            // Exercise info
+            HStack(spacing: 6) {
+                Text("twosum.swift")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(Color.scInk2)
+                Circle()
+                    .fill(coachVM.buildStatusColor)
+                    .frame(width: 6, height: 6)
+                Text(coachVM.buildStatusLabel)
+                    .font(.system(size: 11))
+                    .foregroundStyle(coachVM.buildStatusColor)
+            }
+
+            Spacer()
+
+            // Annotation style
+            HStack(spacing: 2) {
+                ForEach(
+                    [(CodeEditorView.AnnotationStyle.gutter, "gutter"),
+                     (.inline, "inline"),
+                     (.margin, "marge")],
+                    id: \.1
+                ) { style, label in
+                    Button(label) { annotationStyle = style }
+                        .font(.system(size: 11).weight(.medium))
+                        .foregroundStyle(annotationStyle == style ? Color.black : Color.scInk2)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(annotationStyle == style ? Color.scInk : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                        .buttonStyle(.plain)
+                }
+            }
+            .padding(3)
+            .background(Color.scBg3)
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+            .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.scLine, lineWidth: 1))
+
+            Divider()
+                .frame(height: 18)
+                .background(Color.scLineSoft)
+
+            // State picker
+            Menu {
+                ForEach(CoachState.allCases, id: \.rawValue) { state in
+                    Button(state.rawValue) { coachVM.setState(state) }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "play.circle")
+                        .font(.system(size: 12))
+                    Text(coachVM.coachState.rawValue)
+                        .font(.system(size: 11).weight(.medium))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9))
+                }
+                .foregroundStyle(Color.scInk2)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.scBg3)
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.scLine, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 44)
+        .background(Color(hex: "14141a"))
+        .overlay(alignment: .bottom) {
+            Divider().background(Color.scLineSoft)
         }
     }
 }
@@ -99,32 +224,33 @@ private struct MobileLayout: View {
     @State private var showCoachSheet = false
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 0) {
-                // Navigation header
-                MobileHeader(coachVM: coachVM, onCoach: { showCoachSheet = true })
+        VStack(spacing: 0) {
+            // Navigation header
+            MobileHeader(coachVM: coachVM, onCoach: { showCoachSheet = true })
 
-                // Brief (collapsible)
-                MobileBriefCard(coachVM: coachVM)
+            // Brief (collapsible)
+            MobileBriefCard(coachVM: coachVM)
 
-                // File bar
-                MobileFileBar(coachVM: coachVM)
+            // File bar + state indicator
+            MobileFileBar(coachVM: coachVM)
 
-                // Code editor
+            // Code area: editable on writing state, annotated view otherwise
+            if coachVM.coachState == .writing {
+                EditableCodeEditor(coachVM: coachVM)
+            } else {
                 CodeEditorView(
                     code: coachVM.code,
                     annotations: coachVM.annotations,
                     annotationStyle: .inline
                 )
                 .background(Color.scBg)
-
-                // Swift toolbar
-                SwiftToolbarView(onKey: coachVM.appendCode)
             }
-            .background(Color.scBg)
 
-            // Feedback bottom sheet
-            MobileFeedbackSheet(coachVM: coachVM)
+            // Swift toolbar — always above feedback
+            SwiftToolbarView(onKey: coachVM.appendCode)
+
+            // Feedback section (inline, pushes content up)
+            MobileInlineFeedback(coachVM: coachVM)
         }
         .background(Color.scBg)
         .sheet(isPresented: $showCoachSheet) {
@@ -134,17 +260,124 @@ private struct MobileLayout: View {
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
-                            Button("OK") { showCoachSheet = false }
+                            Button("Fermer") { showCoachSheet = false }
                                 .foregroundStyle(Color.scAccent)
                         }
                     }
             }
             .background(Color(hex: "14141a"))
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 }
 
-// MARK: - Shared sub-components
+// MARK: - Writable editor
+
+private struct EditableCodeEditor: View {
+    @ObservedObject var coachVM: CoachViewModel
+
+    var body: some View {
+        TextEditor(text: $coachVM.code)
+            .font(.system(size: 12, design: .monospaced))
+            .foregroundStyle(Color.scInk)
+            .scrollContentBackground(.hidden)
+            .background(Color.scBg)
+            .frame(maxHeight: .infinity)
+            .tint(Color.scAccent)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+    }
+}
+
+// MARK: - Mobile inline feedback (pushes layout, no overlay)
+
+private struct MobileInlineFeedback: View {
+    @ObservedObject var coachVM: CoachViewModel
+
+    private var summaryIcon: String {
+        switch coachVM.coachState {
+        case .error:    return "xmark"
+        case .success, .resolved: return "checkmark"
+        case .hint:     return "lightbulb"
+        case .writing:  return "ellipsis"
+        }
+    }
+
+    private var summaryColor: Color {
+        switch coachVM.coachState {
+        case .error:    return .scDanger
+        case .success, .resolved: return .scOk
+        case .hint:     return .scAccent5
+        case .writing:  return .scInk4
+        }
+    }
+
+    private var summaryLabel: String {
+        switch coachVM.coachState {
+        case .error:    return "Build échoué"
+        case .success:  return "Build OK · \(coachVM.annotations.count) remarques"
+        case .resolved: return "Exercice résolu ✓"
+        case .hint:     return "Indice disponible"
+        case .writing:  return "Prêt à compiler"
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Handle bar
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                    coachVM.feedbackSheetOpen.toggle()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    // Status icon
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(summaryColor)
+                            .frame(width: 30, height: 30)
+                        Image(systemName: summaryIcon)
+                            .font(.system(size: 12).weight(.bold))
+                            .foregroundStyle(.black)
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("FEEDBACK COACH")
+                            .font(.system(size: 9).weight(.semibold))
+                            .foregroundStyle(Color.scInk3)
+                            .kerning(1.1)
+                        Text(summaryLabel)
+                            .font(.system(size: 13).weight(.semibold))
+                            .foregroundStyle(Color.scInk)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: coachVM.feedbackSheetOpen ? "chevron.down" : "chevron.up")
+                        .font(.system(size: 11).weight(.medium))
+                        .foregroundStyle(Color.scInk3)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+
+            // Collapsible content
+            if coachVM.feedbackSheetOpen {
+                FeedbackPanelView(coachVM: coachVM)
+                .frame(height: 260)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .background(Color(hex: "14141a"))
+        .overlay(alignment: .top) {
+            Divider().background(Color.scLine)
+        }
+    }
+}
+
+// MARK: - Shared components
 
 private struct MobileHeader: View {
     @ObservedObject var coachVM: CoachViewModel
@@ -152,44 +385,58 @@ private struct MobileHeader: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            // Coach button
             Button(action: onCoach) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(LinearGradient(colors: [Color.scAccent, Color.scAccent3],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Text("SC")
-                        .font(.system(size: 9, design: .monospaced).weight(.bold))
-                        .foregroundStyle(Color.black)
+                HStack(spacing: 6) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(LinearGradient(colors: [Color.scAccent, Color.scAccent3],
+                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
+                        Text("SC")
+                            .font(.system(size: 8, design: .monospaced).weight(.bold))
+                            .foregroundStyle(Color.black)
+                    }
+                    .frame(width: 22, height: 22)
+                    Text("Coach")
+                        .font(.system(size: 11).weight(.semibold))
+                        .foregroundStyle(Color.scAccent)
                 }
-                .frame(width: 24, height: 24)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color.scAccent.opacity(0.10))
+                .clipShape(Capsule())
+                .overlay(Capsule().strokeBorder(Color.scAccent.opacity(0.25), lineWidth: 1))
             }
             .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 1) {
+            Spacer()
+
+            // Exercise metadata
+            VStack(alignment: .trailing, spacing: 1) {
                 Text(coachVM.exercise.title)
-                    .font(.system(size: 13).weight(.semibold))
+                    .font(.system(size: 12).weight(.semibold))
                     .foregroundStyle(Color.scInk)
                     .lineLimit(1)
                 Text("\(coachVM.exercise.topic) · \(coachVM.exercise.difficulty)")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.system(size: 10))
                     .foregroundStyle(Color.scInk3)
             }
 
-            Spacer()
-
-            Button("indice") {
+            // Hint button
+            Button {
                 coachVM.requestHint()
+            } label: {
+                Image(systemName: "lightbulb")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.scAccent5)
+                    .frame(width: 32, height: 32)
+                    .background(Color.scAccent5.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
-            .font(.system(size: 11).weight(.semibold))
-            .foregroundStyle(Color(hex: "d48247"))
-            .padding(.horizontal, 11)
-            .padding(.vertical, 5)
-            .background(Color(hex: "d48247").opacity(0.12))
-            .clipShape(Capsule())
-            .overlay(Capsule().strokeBorder(Color(hex: "d48247").opacity(0.30), lineWidth: 1))
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
         .background(Color(hex: "14141a"))
         .overlay(alignment: .bottom) {
             Divider().background(Color.scLineSoft)
@@ -202,27 +449,27 @@ private struct MobileBriefCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Toggle row
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     coachVM.briefCollapsed.toggle()
                 }
             } label: {
                 HStack {
-                    Text("ÉNONCÉ")
-                        .font(.system(size: 10).weight(.bold))
-                        .foregroundStyle(Color.scAccent)
-                        .kerning(1.2)
+                    HStack(spacing: 6) {
+                        Text("ÉNONCÉ")
+                            .font(.system(size: 9).weight(.bold))
+                            .foregroundStyle(Color.scAccent)
+                            .kerning(1.2)
+                        SCPill(label: coachVM.exercise.topic, tone: .warm)
+                    }
                     Spacer()
-                    Text(coachVM.briefCollapsed ? "déployer" : "réduire")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.scInk4)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10))
+                    Image(systemName: coachVM.briefCollapsed ? "chevron.right" : "chevron.down")
+                        .font(.system(size: 10).weight(.medium))
                         .foregroundStyle(Color.scInk3)
-                        .rotationEffect(coachVM.briefCollapsed ? .degrees(-90) : .zero)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
             }
             .buttonStyle(.plain)
 
@@ -236,29 +483,25 @@ private struct MobileBriefCard: View {
                         .font(.system(size: 12))
                         .foregroundStyle(Color.scInk2)
                         .lineSpacing(3)
+                        .lineLimit(3)
 
-                    // First example
                     if let ex = coachVM.exercise.examples.first {
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                Text("in  ").foregroundStyle(Color.scInk4)
-                                Text(ex.input).foregroundStyle(Color.scInk2)
+                        HStack(spacing: 16) {
+                            HStack(spacing: 4) {
+                                Text("in").foregroundStyle(Color.scInk4)
+                                Text(ex.input.prefix(20) + "…").foregroundStyle(Color.scInk2)
                             }
-                            HStack(spacing: 6) {
-                                Text("out ").foregroundStyle(Color.scInk4)
+                            HStack(spacing: 4) {
+                                Text("→").foregroundStyle(Color.scInk4)
                                 Text(ex.output).foregroundStyle(Color.scAccent4)
                             }
                         }
                         .font(.system(size: 11, design: .monospaced))
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.scShell)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.scLineSoft, lineWidth: 1))
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 14)
                 .padding(.bottom, 12)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .background(Color(hex: "181820"))
@@ -272,34 +515,55 @@ private struct MobileFileBar: View {
     @ObservedObject var coachVM: CoachViewModel
 
     var body: some View {
-        HStack(spacing: 8) {
-            Text("twosum.swift")
-                .font(.system(size: 10, design: .monospaced).weight(.bold))
-                .foregroundStyle(Color.scAccent)
-            Text("·")
-                .foregroundStyle(Color.scInk4)
-            Text("\(coachVM.code.components(separatedBy: "\n").count) ln")
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(Color.scInk4)
+        HStack(spacing: 10) {
+            // File name + status
+            HStack(spacing: 6) {
+                Text("twosum.swift")
+                    .font(.system(size: 11, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(Color.scInk2)
+                Circle()
+                    .fill(coachVM.buildStatusColor)
+                    .frame(width: 5, height: 5)
+            }
+
             Spacer()
+
+            // Line count
+            Text("\(coachVM.code.components(separatedBy: "\n").count) ln")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(Color.scInk4)
+
+            // Run button
             Button {
                 coachVM.run()
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Image(systemName: "play.fill")
-                        .font(.system(size: 8))
-                    Text("RUN")
-                        .font(.system(size: 10).weight(.bold))
+                        .font(.system(size: 9))
+                    Text("Compiler")
+                        .font(.system(size: 11).weight(.bold))
                 }
                 .foregroundStyle(Color.black)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
                 .background(Color.scAccent)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+
+            // State picker (compact)
+            Menu {
+                ForEach(CoachState.allCases, id: \.rawValue) { state in
+                    Button(state.rawValue) { coachVM.setState(state) }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Color.scInk3)
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(Color(hex: "14141a"))
         .overlay(alignment: .bottom) {
@@ -308,89 +572,7 @@ private struct MobileFileBar: View {
     }
 }
 
-private struct MobileFeedbackSheet: View {
-    @ObservedObject var coachVM: CoachViewModel
-
-    private var summary: (color: Color, label: String, icon: String) {
-        switch coachVM.coachState {
-        case .error:    return (.scDanger, "Build échoué", "xmark")
-        case .success:  return (.scOk, "Build OK · \(coachVM.annotations.count) remarques", "checkmark")
-        case .resolved: return (.scOk, "Exercice résolu", "checkmark")
-        case .hint:     return (.scAccent5, "Indice disponible", "questionmark")
-        case .writing:  return (.scInk3, "En attente d'exécution", "circle.fill")
-        }
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Handle + toggle row
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    coachVM.feedbackSheetOpen.toggle()
-                }
-            } label: {
-                VStack(spacing: 0) {
-                    // Drag handle
-                    Capsule()
-                        .fill(Color.scLine)
-                        .frame(width: 36, height: 4)
-                        .padding(.top, 8)
-                        .padding(.bottom, 8)
-
-                    HStack(spacing: 10) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 7)
-                                .fill(summary.color)
-                                .frame(width: 28, height: 28)
-                            Image(systemName: summary.icon)
-                                .font(.system(size: 12).weight(.bold))
-                                .foregroundStyle(Color.black)
-                        }
-
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("FEEDBACK COACH")
-                                .font(.system(size: 9).weight(.semibold))
-                                .foregroundStyle(Color.scInk3)
-                                .kerning(1.2)
-                            Text(summary.label)
-                                .font(.system(size: 13).weight(.semibold))
-                                .foregroundStyle(Color.scInk)
-                        }
-
-                        Spacer()
-
-                        Image(systemName: coachVM.feedbackSheetOpen ? "chevron.down" : "chevron.up")
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.scInk3)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
-                }
-            }
-            .buttonStyle(.plain)
-
-            // Feedback content (shown when open)
-            if coachVM.feedbackSheetOpen {
-                FeedbackPanelView(
-                    state: coachVM.coachState,
-                    annotations: coachVM.annotations,
-                    tab: $coachVM.feedbackTab,
-                    onHint: coachVM.requestHint
-                )
-                .frame(height: 300)
-            }
-        }
-        .background(Color(hex: "14141a"))
-        .clipShape(RoundedRectangle(cornerRadius: coachVM.feedbackSheetOpen ? 14 : 0, style: .continuous))
-        .overlay(alignment: .top) {
-            RoundedRectangle(cornerRadius: coachVM.feedbackSheetOpen ? 14 : 0)
-                .strokeBorder(Color.scLine, lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.4), radius: 30, y: -10)
-    }
-}
-
-// MARK: - Editor tab bar + action bar
+// MARK: - Editor tab bar + action bar (desktop shared)
 
 private struct EditorTabBar: View {
     @ObservedObject var coachVM: CoachViewModel
@@ -416,17 +598,10 @@ private struct EditorTabBar: View {
                     .fill(Color.scAccent)
                     .frame(height: 2)
             }
-            .overlay(
-                HStack {
-                    Divider().background(Color.scLineSoft)
-                    Spacer()
-                    Divider().background(Color.scLineSoft)
-                }
-            )
 
             Spacer()
 
-            Text("Swift 5.10 · UTF-8 · LF")
+            Text("Swift 5.10 · UTF-8")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(Color.scInk4)
                 .padding(.trailing, 12)
@@ -461,24 +636,25 @@ private struct EditorActionBar: View {
             }
             .buttonStyle(.plain)
 
-            Button("Demander un indice") {
+            Button {
                 coachVM.requestHint()
+            } label: {
+                Text("Demander un indice")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.scInk2)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .strokeBorder(Color.scLine, lineWidth: 1)
+                    )
             }
-            .font(.system(size: 12))
-            .foregroundStyle(Color.scInk2)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 7))
-            .overlay(
-                RoundedRectangle(cornerRadius: 7)
-                    .strokeBorder(Color.scLine, lineWidth: 1)
-            )
+            .buttonStyle(.plain)
 
             Spacer()
 
             HStack(spacing: 14) {
-                Text("Ln 4, Col 29")
                 Text("\(coachVM.code.components(separatedBy: "\n").count) lignes")
                 HStack(spacing: 4) {
                     Circle()
@@ -497,34 +673,5 @@ private struct EditorActionBar: View {
         .overlay(alignment: .top) {
             Divider().background(Color.scLineSoft)
         }
-    }
-}
-
-// MARK: - State picker overlay (desktop)
-
-private struct StatePickerView: View {
-    @ObservedObject var coachVM: CoachViewModel
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(CoachState.allCases, id: \.rawValue) { state in
-                Button {
-                    coachVM.setState(state)
-                } label: {
-                    Text(state.rawValue)
-                        .font(.system(size: 11).weight(.medium))
-                        .foregroundStyle(coachVM.coachState == state ? Color.black : Color.scInk2)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(coachVM.coachState == state ? Color.scInk : Color.clear)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(4)
-        .background(.ultraThinMaterial)
-        .clipShape(Capsule())
-        .overlay(Capsule().strokeBorder(Color.scLine, lineWidth: 1))
     }
 }
