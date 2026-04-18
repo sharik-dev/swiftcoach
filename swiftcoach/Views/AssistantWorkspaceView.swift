@@ -46,11 +46,8 @@ struct AssistantWorkspaceView: View {
 
             Picker("Model", selection: $appState.selectedModelSize) {
                 ForEach(AppState.ModelSize.allCases) { model in
-                    VStack(alignment: .leading) {
-                        Text(model.displayName)
-                        Text(model.subtitle)
-                    }
-                    .tag(model)
+                    Text(model.displayName)
+                        .tag(model)
                 }
             }
             .pickerStyle(.segmented)

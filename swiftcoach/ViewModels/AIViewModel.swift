@@ -7,10 +7,19 @@ final class AIViewModel: ObservableObject {
     @Published var lastError: String?
 
     var llmService: LLMServiceProtocol?
+    private let llmServiceFactory: () -> LLMServiceProtocol
 
     private var streamTask: Task<Void, Never>?
     private var modelLoadTask: Task<Void, Never>?
     private var activeModelID: String?
+
+    init(
+        llmService: LLMServiceProtocol? = nil,
+        llmServiceFactory: @escaping () -> LLMServiceProtocol = { LocalLLMService() }
+    ) {
+        self.llmService = llmService
+        self.llmServiceFactory = llmServiceFactory
+    }
 
     func ensureModelLoaded(
         modelID: String,
@@ -23,7 +32,7 @@ final class AIViewModel: ObservableObject {
         }
 
         if activeModelID != modelID || llmService == nil {
-            llmService = LocalLLMService()
+            llmService = llmServiceFactory()
             activeModelID = modelID
         }
 

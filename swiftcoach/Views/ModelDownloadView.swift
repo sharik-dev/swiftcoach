@@ -21,7 +21,7 @@ struct ModelDownloadView: View {
                     .font(.headline)
 
                 Text(selectedModel.rawValue)
-                    .font(.footnote.monospaced())
+                    .font(.system(.footnote, design: .monospaced))
                     .foregroundStyle(.secondary)
 
                 Text("Estimated download: \(selectedModel.estimatedFootprint)")
