@@ -37,6 +37,7 @@ fastlane/test_output
 # OS
 .DS_Store
 Thumbs.db
+.claude/
 
 # Backend
 backend/node_modules/
