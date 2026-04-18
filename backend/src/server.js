@@ -1,21 +1,36 @@
 import "dotenv/config";
+import { promisify } from "node:util";
+import { execFile as execFileCallback, spawn } from "node:child_process";
 import cors from "cors";
 import express from "express";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
+const execFile = promisify(execFileCallback);
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
+const DEFAULT_MAX_TOKENS = {
+  codex: Number(process.env.CODEX_MAX_TOKENS || 1024),
+  claude: Number(process.env.CLAUDE_MAX_TOKENS || 1024),
+  gemma: Number(process.env.GEMMA_MAX_TOKENS || 256),
+};
+
+const REQUEST_TIMEOUT_MS = {
+  codex: Number(process.env.OPENAI_TIMEOUT_MS || 45000),
+  claude: Number(process.env.ANTHROPIC_TIMEOUT_MS || 45000),
+  gemma: Number(process.env.OLLAMA_TIMEOUT_MS || 120000),
+};
+
 const PROVIDERS = {
   codex: {
     model: process.env.CODEX_MODEL || "gpt-5",
-    configured: () => Boolean(process.env.OPENAI_API_KEY),
+    configured: () => Boolean(process.env.OPENAI_API_KEY || process.env.CODEX_USE_CLI !== "0"),
   },
   claude: {
     model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
-    configured: () => Boolean(process.env.ANTHROPIC_API_KEY),
+    configured: () => Boolean(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_USE_CLI !== "0"),
   },
   gemma: {
     model: process.env.GEMMA_MODEL || "gemma4",
@@ -28,6 +43,7 @@ function getProviderInfo() {
     id,
     model: config.model,
     configured: config.configured(),
+    transport: getProviderTransport(id),
   }));
 }
 
@@ -65,6 +81,24 @@ function badRequest(message) {
   return error;
 }
 
+function upstreamError(message, statusCode = 502) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function getProviderTransport(provider) {
+  if (provider === "codex") {
+    return process.env.OPENAI_API_KEY ? "openai_api" : "codex_cli";
+  }
+
+  if (provider === "claude") {
+    return process.env.ANTHROPIC_API_KEY ? "anthropic_api" : "claude_cli";
+  }
+
+  return "ollama";
+}
+
 async function parseError(response) {
   const text = await response.text();
   let detail = text;
@@ -79,8 +113,351 @@ async function parseError(response) {
   return `${response.status} ${response.statusText}: ${detail}`;
 }
 
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw upstreamError(`Upstream request timed out after ${timeoutMs} ms.`, 504);
+    }
+
+    throw upstreamError(error.message || "Unable to reach upstream provider.");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function getMaxTokens(provider, requestedMaxTokens) {
+  if (typeof requestedMaxTokens === "number" && Number.isFinite(requestedMaxTokens) && requestedMaxTokens > 0) {
+    return Math.floor(requestedMaxTokens);
+  }
+
+  return DEFAULT_MAX_TOKENS[provider];
+}
+
+function extractOpenAIOutputText(data) {
+  if (typeof data.output_text === "string" && data.output_text.trim()) {
+    return data.output_text;
+  }
+
+  if (!Array.isArray(data.output)) {
+    return "";
+  }
+
+  return data.output
+    .flatMap((item) => Array.isArray(item.content) ? item.content : [])
+    .filter((item) => item.type === "output_text" && typeof item.text === "string")
+    .map((item) => item.text)
+    .join("\n");
+}
+
+function buildCliPrompt({ system, messages }) {
+  const sections = [];
+
+  if (system) {
+    sections.push(`System:\n${system}`);
+  }
+
+  for (const message of messages) {
+    const role = message.role === "assistant" ? "Assistant" : "User";
+    sections.push(`${role}:\n${message.content}`);
+  }
+
+  sections.push("Respond with the assistant reply only.");
+  return sections.join("\n\n");
+}
+
+async function runCommand(command, args, timeoutMs) {
+  try {
+    return await execFile(command, args, {
+      cwd: process.cwd(),
+      timeout: timeoutMs,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+  } catch (error) {
+    if (error.killed) {
+      throw upstreamError(`${command} timed out after ${timeoutMs} ms.`, 504);
+    }
+
+    const detail = error.stderr?.trim() || error.stdout?.trim() || error.message;
+    throw upstreamError(detail || `Unable to execute ${command}.`);
+  }
+}
+
+async function runCommandWithInput(command, args, input, timeoutMs) {
+  return await new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: process.cwd(),
+      stdio: ["pipe", "pipe", "pipe"],
+      env: process.env,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timeout = setTimeout(() => {
+      settled = true;
+      child.kill("SIGTERM");
+      reject(upstreamError(`${command} timed out after ${timeoutMs} ms.`, 504));
+    }, timeoutMs);
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      reject(upstreamError(error.message || `Unable to execute ${command}.`));
+    });
+
+    child.on("close", (code) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+
+      if (code !== 0) {
+        reject(upstreamError(stderr.trim() || stdout.trim() || `${command} exited with code ${code}.`));
+        return;
+      }
+
+      resolve({ stdout, stderr });
+    });
+
+    child.stdin.end(input);
+  });
+}
+
+function parseCodexCliOutput(stdout) {
+  const lines = stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+  let output = "";
+  let usage = null;
+
+  for (const line of lines) {
+    try {
+      const event = JSON.parse(line);
+
+      if (event.type === "item.completed" && event.item?.type === "agent_message" && typeof event.item.text === "string") {
+        output = event.item.text;
+      }
+
+      if (event.type === "turn.completed" && event.usage) {
+        usage = {
+          input_tokens: event.usage.input_tokens ?? null,
+          output_tokens: event.usage.output_tokens ?? null,
+          cached_input_tokens: event.usage.cached_input_tokens ?? null,
+        };
+      }
+    } catch {
+      // Ignore non-JSON lines.
+    }
+  }
+
+  return { output, usage };
+}
+
+async function callCodexCli({ system, messages }) {
+  const prompt = buildCliPrompt({ system, messages });
+  const args = [
+    "exec",
+    "--skip-git-repo-check",
+    "--sandbox",
+    "read-only",
+    "--json",
+    "-",
+  ];
+
+  const { stdout, stderr } = await runCommandWithInput(
+    process.env.CODEX_CLI_COMMAND || "codex",
+    args,
+    prompt,
+    REQUEST_TIMEOUT_MS.codex,
+  );
+  const parsed = parseCodexCliOutput(`${stdout}\n${stderr}`);
+
+  return {
+    provider: "codex",
+    model: PROVIDERS.codex.model,
+    output: parsed.output,
+    usage: parsed.usage,
+  };
+}
+
+async function callClaudeCli({ system, messages }) {
+  const prompt = buildCliPrompt({ system, messages });
+  const args = [
+    "-p",
+    "--output-format",
+    "json",
+    "--permission-mode",
+    "default",
+    "--model",
+    process.env.CLAUDE_CLI_MODEL || "sonnet",
+    prompt,
+  ];
+
+  const { stdout } = await runCommand(process.env.CLAUDE_CLI_COMMAND || "claude", args, REQUEST_TIMEOUT_MS.claude);
+  const data = JSON.parse(stdout);
+
+  return {
+    provider: "claude",
+    model: data.model ?? process.env.CLAUDE_CLI_MODEL ?? "sonnet",
+    output: data.result || "",
+    usage: data.usage
+      ? {
+          input_tokens: data.usage.input_tokens ?? null,
+          output_tokens: data.usage.output_tokens ?? null,
+        }
+      : null,
+  };
+}
+
+async function checkProviderHealth(provider) {
+  try {
+    if (!PROVIDERS[provider].configured()) {
+      return {
+        id: provider,
+        configured: false,
+        reachable: false,
+        status: "not_configured",
+      };
+    }
+
+    if (provider === "gemma") {
+      const response = await fetchWithTimeout(
+        `${process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434"}/api/tags`,
+        { method: "GET" },
+        Math.min(REQUEST_TIMEOUT_MS.gemma, 10000),
+      );
+
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+
+      const data = await response.json();
+      const installed = Array.isArray(data.models)
+        && data.models.some((model) => model.name === PROVIDERS.gemma.model || model.model === PROVIDERS.gemma.model);
+
+      return {
+        id: provider,
+        configured: true,
+        reachable: true,
+        status: installed ? "ready" : "model_missing",
+      };
+    }
+
+    if (provider === "codex") {
+      if (!process.env.OPENAI_API_KEY) {
+        await runCommand(process.env.CODEX_CLI_COMMAND || "codex", ["login", "status"], Math.min(REQUEST_TIMEOUT_MS.codex, 10000));
+
+        return {
+          id: provider,
+          configured: true,
+          reachable: true,
+          status: "ready",
+          transport: "codex_cli",
+        };
+      }
+
+      const response = await fetchWithTimeout(
+        `${process.env.OPENAI_BASE_URL || "https://api.openai.com/v1"}/models`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          },
+        },
+        Math.min(REQUEST_TIMEOUT_MS.codex, 10000),
+      );
+
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+
+      return {
+        id: provider,
+        configured: true,
+        reachable: true,
+        status: "ready",
+        transport: "openai_api",
+      };
+    }
+
+    if (provider === "claude" && !process.env.ANTHROPIC_API_KEY) {
+      await runCommand(process.env.CLAUDE_CLI_COMMAND || "claude", ["auth", "status"], Math.min(REQUEST_TIMEOUT_MS.claude, 10000));
+
+      return {
+        id: provider,
+        configured: true,
+        reachable: true,
+        status: "ready",
+        transport: "claude_cli",
+      };
+    }
+
+    const response = await fetchWithTimeout(
+      `${process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com"}/v1/messages`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": process.env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: PROVIDERS.claude.model,
+          max_tokens: 1,
+          messages: [{ role: "user", content: "ping" }],
+        }),
+      },
+      Math.min(REQUEST_TIMEOUT_MS.claude, 10000),
+    );
+
+    if (!response.ok) {
+      throw new Error(await parseError(response));
+    }
+
+    return {
+      id: provider,
+      configured: true,
+      reachable: true,
+      status: "ready",
+      transport: "anthropic_api",
+    };
+  } catch (error) {
+    return {
+      id: provider,
+      configured: true,
+      reachable: false,
+      status: "error",
+      error: error.message,
+    };
+  }
+}
+
 async function callCodex({ system, messages, temperature, maxTokens }) {
-  const response = await fetch(`${process.env.OPENAI_BASE_URL || "https://api.openai.com/v1"}/responses`, {
+  if (!process.env.OPENAI_API_KEY) {
+    return callCodexCli({ system, messages, temperature, maxTokens });
+  }
+
+  const response = await fetchWithTimeout(`${process.env.OPENAI_BASE_URL || "https://api.openai.com/v1"}/responses`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -96,26 +473,31 @@ async function callCodex({ system, messages, temperature, maxTokens }) {
         })),
       ],
       ...(typeof temperature === "number" ? { temperature } : {}),
-      ...(typeof maxTokens === "number" ? { max_output_tokens: maxTokens } : {}),
+      max_output_tokens: getMaxTokens("codex", maxTokens),
     }),
-  });
+  }, REQUEST_TIMEOUT_MS.codex);
 
   if (!response.ok) {
     throw new Error(await parseError(response));
   }
 
   const data = await response.json();
+  const output = extractOpenAIOutputText(data);
 
   return {
     provider: "codex",
     model: data.model || PROVIDERS.codex.model,
-    output: data.output_text || "",
+    output,
     usage: data.usage || null,
   };
 }
 
 async function callClaude({ system, messages, temperature, maxTokens }) {
-  const response = await fetch(`${process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com"}/v1/messages`, {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return callClaudeCli({ system, messages, temperature, maxTokens });
+  }
+
+  const response = await fetchWithTimeout(`${process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com"}/v1/messages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -129,10 +511,10 @@ async function callClaude({ system, messages, temperature, maxTokens }) {
         role: message.role === "assistant" ? "assistant" : "user",
         content: message.content,
       })),
-      max_tokens: typeof maxTokens === "number" ? maxTokens : 1024,
+      max_tokens: getMaxTokens("claude", maxTokens),
       temperature: typeof temperature === "number" ? temperature : 0.7,
     }),
-  });
+  }, REQUEST_TIMEOUT_MS.claude);
 
   if (!response.ok) {
     throw new Error(await parseError(response));
@@ -151,8 +533,8 @@ async function callClaude({ system, messages, temperature, maxTokens }) {
   };
 }
 
-async function callGemma({ system, messages, temperature, maxTokens }) {
-  const response = await fetch(`${process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434"}/api/chat`, {
+async function callGemmaOnce({ system, messages, temperature, maxTokens }) {
+  const response = await fetchWithTimeout(`${process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434"}/api/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -160,22 +542,45 @@ async function callGemma({ system, messages, temperature, maxTokens }) {
     body: JSON.stringify({
       model: PROVIDERS.gemma.model,
       stream: false,
+      think: false,
       messages: [
         ...(system ? [{ role: "system", content: system }] : []),
         ...messages,
       ],
       options: {
         ...(typeof temperature === "number" ? { temperature } : {}),
-        ...(typeof maxTokens === "number" ? { num_predict: maxTokens } : {}),
+        num_predict: getMaxTokens("gemma", maxTokens),
       },
+      keep_alive: process.env.OLLAMA_KEEP_ALIVE || "30m",
     }),
-  });
+  }, REQUEST_TIMEOUT_MS.gemma);
 
   if (!response.ok) {
     throw new Error(await parseError(response));
   }
 
   const data = await response.json();
+
+  return data;
+}
+
+async function callGemma({ system, messages, temperature, maxTokens }) {
+  const requestedMaxTokens = getMaxTokens("gemma", maxTokens);
+  let data = await callGemmaOnce({
+    system,
+    messages,
+    temperature,
+    maxTokens: requestedMaxTokens,
+  });
+
+  if (!data.message?.content?.trim() && requestedMaxTokens < 512) {
+    data = await callGemmaOnce({
+      system,
+      messages,
+      temperature,
+      maxTokens: Math.min(requestedMaxTokens * 2, 512),
+    });
+  }
 
   return {
     provider: "gemma",
@@ -221,6 +626,14 @@ app.get("/providers", (_request, response) => {
   response.json({
     providers: getProviderInfo(),
   });
+});
+
+app.get("/providers/health", async (_request, response) => {
+  const providers = await Promise.all(
+    Object.keys(PROVIDERS).map((provider) => checkProviderHealth(provider))
+  );
+
+  response.json({ providers });
 });
 
 app.post("/chat", async (request, response) => {
