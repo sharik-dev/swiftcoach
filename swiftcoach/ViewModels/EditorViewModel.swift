@@ -23,7 +23,12 @@ final class EditorViewModel: ObservableObject {
 
     func generateNow() {
         guard hasUsefulInput else { return }
-        aiViewModel.generate(task: taskText, codeContext: codeContext)
+        aiViewModel.generate(
+            task: taskText,
+            codeContext: codeContext,
+            provider: appState.selectedProvider,
+            backendBaseURL: appState.backendBaseURL
+        )
     }
 
     var hasUsefulInput: Bool {

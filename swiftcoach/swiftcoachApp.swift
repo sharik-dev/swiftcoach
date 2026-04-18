@@ -10,23 +10,31 @@ struct swiftcoachApp: App {
             ContentView()
                 .environmentObject(appState)
                 .environmentObject(aiViewModel)
-                .task(id: appState.selectedModelSize) {
-                    let modelID = appState.selectedModelSize.rawValue
-                    appState.modelLoadingState = .downloading(progress: 0)
+                .task(id: appState.configurationToken) {
+                    if appState.selectedProvider.requiresLocalModel {
+                        let modelID = appState.selectedModelSize.rawValue
+                        appState.modelLoadingState = .downloading(progress: 0)
 
-                    aiViewModel.ensureModelLoaded(
-                        modelID: modelID,
-                        progressHandler: { progress in
-                            Task { @MainActor in
-                                appState.modelLoadingState = progress >= 1 ? .loaded : .downloading(progress: progress)
+                        aiViewModel.ensureModelLoaded(
+                            modelID: modelID,
+                            progressHandler: { progress in
+                                Task { @MainActor in
+                                    appState.modelLoadingState = progress >= 1 ? .loaded : .downloading(progress: progress)
+                                }
+                            },
+                            failureHandler: { message in
+                                Task { @MainActor in
+                                    appState.modelLoadingState = .failed(message)
+                                }
                             }
-                        },
-                        failureHandler: { message in
-                            Task { @MainActor in
-                                appState.modelLoadingState = .failed(message)
-                            }
-                        }
-                    )
+                        )
+                    } else {
+                        appState.modelLoadingState = .loaded
+                        await aiViewModel.refreshRemoteProviders(
+                            baseURL: appState.backendBaseURL,
+                            selectedProviderID: appState.selectedProvider.remoteProviderID
+                        )
+                    }
                 }
         }
     }

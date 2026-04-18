@@ -15,6 +15,7 @@
         110000000000000000000006 /* EditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000006 /* EditorViewModel.swift */; };
         110000000000000000000007 /* AssistantWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000007 /* AssistantWorkspaceView.swift */; };
         110000000000000000000008 /* ModelDownloadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000008 /* ModelDownloadView.swift */; };
+        110000000000000000000009 /* RemoteLLMService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 210000000000000000000009 /* RemoteLLMService.swift */; };
         CE288716231122284948B5D7 /* swiftcoachApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBFA93A0B36BF9FB086E7D89 /* swiftcoachApp.swift */; };
         3023D7943E3EFAC5536014FC /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFC5725F4D440C50BF415963 /* ContentView.swift */; };
         4BEA441BC4373CC1DF3ED822 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 39D7834AB9DC0A9A55C4C758 /* Assets.xcassets */; };
@@ -33,6 +34,7 @@
         210000000000000000000006 /* EditorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorViewModel.swift; sourceTree = "<group>"; };
         210000000000000000000007 /* AssistantWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssistantWorkspaceView.swift; sourceTree = "<group>"; };
         210000000000000000000008 /* ModelDownloadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelDownloadView.swift; sourceTree = "<group>"; };
+        210000000000000000000009 /* RemoteLLMService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteLLMService.swift; sourceTree = "<group>"; };
         DBFA93A0B36BF9FB086E7D89 /* swiftcoachApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "swiftcoachApp.swift"; sourceTree = "<group>"; };
         CFC5725F4D440C50BF415963 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ContentView.swift"; sourceTree = "<group>"; };
         39D7834AB9DC0A9A55C4C758 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Assets.xcassets"; sourceTree = "<group>"; };
@@ -65,6 +67,7 @@
             children = (
                 210000000000000000000002 /* LLMServiceProtocol.swift */,
                 210000000000000000000003 /* LocalLLMService.swift */,
+                210000000000000000000009 /* RemoteLLMService.swift */,
                 210000000000000000000004 /* PromptBuilder.swift */,
             );
             path = Services;
@@ -211,6 +214,7 @@
                 110000000000000000000006 /* EditorViewModel.swift in Sources */,
                 110000000000000000000002 /* LLMServiceProtocol.swift in Sources */,
                 110000000000000000000003 /* LocalLLMService.swift in Sources */,
+                110000000000000000000009 /* RemoteLLMService.swift in Sources */,
                 110000000000000000000008 /* ModelDownloadView.swift in Sources */,
                 110000000000000000000004 /* PromptBuilder.swift in Sources */,
                 3023D7943E3EFAC5536014FC /* ContentView.swift in Sources */,
@@ -347,6 +351,7 @@
                 DEVELOPMENT_ASSET_PATHS = "\"swiftcoach/Preview Content\"";
                 ENABLE_PREVIEWS = YES;
                 GENERATE_INFOPLIST_FILE = YES;
+                INFOPLIST_KEY_NSAppTransportSecurity = "{ NSAllowsLocalNetworking = YES; }";
                 INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
                 INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
                 INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -375,6 +380,7 @@
                 DEVELOPMENT_ASSET_PATHS = "\"swiftcoach/Preview Content\"";
                 ENABLE_PREVIEWS = YES;
                 GENERATE_INFOPLIST_FILE = YES;
+                INFOPLIST_KEY_NSAppTransportSecurity = "{ NSAllowsLocalNetworking = YES; }";
                 INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
                 INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
                 INFOPLIST_KEY_UILaunchScreen_Generation = YES;

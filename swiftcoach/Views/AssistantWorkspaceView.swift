@@ -41,20 +41,62 @@ struct AssistantWorkspaceView: View {
 
     private var modelCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Local Model")
+            Text("Provider")
                 .font(.headline)
 
-            Picker("Model", selection: $appState.selectedModelSize) {
-                ForEach(AppState.ModelSize.allCases) { model in
-                    Text(model.displayName)
-                        .tag(model)
+            Picker("Provider", selection: $appState.selectedProvider) {
+                ForEach(AppState.AIProvider.allCases) { provider in
+                    Text(provider.displayName)
+                        .tag(provider)
                 }
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
 
-            Text(appState.selectedModelSize.subtitle)
+            Text(appState.selectedProvider.subtitle)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+
+            if appState.selectedProvider.requiresLocalModel {
+                Picker("Model", selection: $appState.selectedModelSize) {
+                    ForEach(AppState.ModelSize.allCases) { model in
+                        Text(model.displayName)
+                            .tag(model)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text(appState.selectedModelSize.subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                TextField("Backend URL", text: $appState.backendBaseURL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .padding(10)
+                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Backend status")
+                        .font(.subheadline.weight(.semibold))
+
+                    if aiViewModel.remoteProviders.isEmpty {
+                        Text("No provider metadata loaded yet. The backend will be checked when this mode is selected.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(aiViewModel.remoteProviders) { provider in
+                            HStack {
+                                Text(provider.displayName)
+                                Spacer()
+                                Text(provider.configured ? "Ready" : "Missing server config")
+                                    .foregroundStyle(provider.configured ? .green : .orange)
+                            }
+                            .font(.footnote)
+                        }
+                    }
+                }
+            }
 
             Toggle("Auto-run after inactivity", isOn: $appState.autoRunEnabled)
 
@@ -119,7 +161,7 @@ struct AssistantWorkspaceView: View {
             }
 
             ScrollView {
-                Text(aiViewModel.output.isEmpty ? "The local model response will stream here." : aiViewModel.output)
+                Text(aiViewModel.output.isEmpty ? emptyOutputMessage : aiViewModel.output)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
                     .font(.system(.body, design: .monospaced))
@@ -136,5 +178,13 @@ struct AssistantWorkspaceView: View {
         }
         .padding(18)
         .background(.background, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var emptyOutputMessage: String {
+        if appState.selectedProvider.requiresLocalModel {
+            return "The local model response will stream here."
+        }
+
+        return "The backend provider response will appear here."
     }
 }

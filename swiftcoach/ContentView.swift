@@ -5,10 +5,9 @@ struct ContentView: View {
     @EnvironmentObject private var aiViewModel: AIViewModel
 
     var body: some View {
-        switch appState.modelLoadingState {
-        case .loaded:
+        if !appState.selectedProvider.requiresLocalModel || appState.modelLoadingState == .loaded {
             AssistantWorkspaceView(appState: appState, aiViewModel: aiViewModel)
-        case .notLoaded, .downloading, .failed:
+        } else {
             ModelDownloadView(
                 state: appState.modelLoadingState,
                 selectedModel: appState.selectedModelSize,
@@ -18,6 +17,11 @@ struct ContentView: View {
     }
 
     private func reloadModel() {
+        guard appState.selectedProvider.requiresLocalModel else {
+            appState.modelLoadingState = .loaded
+            return
+        }
+
         let modelID = appState.selectedModelSize.rawValue
         appState.modelLoadingState = .downloading(progress: 0)
 
