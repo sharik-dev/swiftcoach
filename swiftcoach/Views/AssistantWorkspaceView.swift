@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import UIKit
 
 // MARK: - Root workspace
 
@@ -145,7 +147,7 @@ private struct DesktopToolbar: View {
 
             // Exercise info
             HStack(spacing: 6) {
-                Text("twosum.swift")
+                Text("\(coachVM.exercise.id).swift")
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(Color.scInk2)
                 Circle()
@@ -247,7 +249,7 @@ private struct MobileLayout: View {
             }
 
             // Swift toolbar — always above feedback
-            SwiftToolbarView(onKey: coachVM.appendCode)
+            SwiftToolbarView(onAction: coachVM.applyKeyboardAction)
 
             // Feedback section (inline, pushes content up)
             MobileInlineFeedback(coachVM: coachVM)
@@ -278,15 +280,71 @@ private struct EditableCodeEditor: View {
     @ObservedObject var coachVM: CoachViewModel
 
     var body: some View {
-        TextEditor(text: $coachVM.code)
-            .font(.system(size: 12, design: .monospaced))
-            .foregroundStyle(Color.scInk)
-            .scrollContentBackground(.hidden)
+        IDETextView(text: $coachVM.code, selectedRange: $coachVM.selectedRange)
             .background(Color.scBg)
             .frame(maxHeight: .infinity)
-            .tint(Color.scAccent)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
+    }
+}
+
+private struct IDETextView: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var selectedRange: NSRange
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text, selectedRange: $selectedRange)
+    }
+
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView()
+        view.delegate = context.coordinator
+        view.backgroundColor = .clear
+        view.textColor = UIColor(Color.scInk)
+        view.tintColor = UIColor(Color.scAccent)
+        view.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
+        view.autocorrectionType = .no
+        view.autocapitalizationType = .none
+        view.smartDashesType = .no
+        view.smartQuotesType = .no
+        view.smartInsertDeleteType = .no
+        view.spellCheckingType = .no
+        view.keyboardDismissMode = .interactive
+        view.textContainerInset = UIEdgeInsets(top: 14, left: 0, bottom: 24, right: 0)
+        view.textContainer.lineFragmentPadding = 0
+        view.text = text
+        view.selectedRange = selectedRange
+        return view
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        if uiView.text != text {
+            uiView.text = text
+        }
+        if uiView.selectedRange != selectedRange {
+            uiView.selectedRange = selectedRange
+        }
+        if uiView.window != nil, !uiView.isFirstResponder {
+            uiView.becomeFirstResponder()
+        }
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        @Binding var text: String
+        @Binding var selectedRange: NSRange
+
+        init(text: Binding<String>, selectedRange: Binding<NSRange>) {
+            _text = text
+            _selectedRange = selectedRange
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            text = textView.text
+        }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            selectedRange = textView.selectedRange
+        }
     }
 }
 
@@ -518,7 +576,7 @@ private struct MobileFileBar: View {
         HStack(spacing: 10) {
             // File name + status
             HStack(spacing: 6) {
-                Text("twosum.swift")
+                Text("\(coachVM.exercise.id).swift")
                     .font(.system(size: 11, design: .monospaced).weight(.semibold))
                     .foregroundStyle(Color.scInk2)
                 Circle()
@@ -583,7 +641,7 @@ private struct EditorTabBar: View {
                 Circle()
                     .fill(Color.scAccent)
                     .frame(width: 6, height: 6)
-                Text("twosum.swift")
+                Text("\(coachVM.exercise.id).swift")
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(Color.scInk)
                 Text("×")

@@ -655,6 +655,58 @@ app.post("/chat", async (request, response) => {
   }
 });
 
+app.post("/exercise/generate", async (request, response) => {
+  try {
+    const { provider, topic, difficulty, userPrompt } = request.body || {};
+    if (!provider) throw badRequest("`provider` is required.");
+
+    const system = `You are a Swift coding coach. Generate a Swift coding exercise and return ONLY valid JSON (no markdown):
+{"id":"kebab-slug","topic":"French topic","difficulty":"Débutant|Intermédiaire|Avancé","title":"French title","brief":"Description in French (2–4 sentences)","constraints":["constraint"],"examples":[{"input":"...","output":"...","note":null}],"signature":"func name(_ p: Type) -> Return","starterCode":"func name(_ p: Type) -> Return {\\n    // TODO\\n    return []\\n}","hints":["hint1 no spoiler","hint2","hint3"]}`;
+
+    const message = userPrompt || `Create a ${difficulty || "intermediate"} Swift exercise about ${topic || "algorithms"}.`;
+    const result = await runProvider(provider, { system, messages: [{ role: "user", content: message }], maxTokens: 1200 });
+    response.json({ raw: result.output, provider: result.provider, model: result.model });
+  } catch (error) {
+    response.status(error.statusCode || 502).json({ error: error.message || "Unknown server error." });
+  }
+});
+
+app.post("/review", async (request, response) => {
+  try {
+    const { provider, exerciseID, code, consoleOutput, languageHint } = request.body || {};
+    if (!provider) throw badRequest("`provider` is required.");
+    if (!code) throw badRequest("`code` is required.");
+
+    const lang = languageHint || "French";
+    const system = `You are a Swift coding coach. Review the code and return ONLY valid JSON (no markdown):
+{"summary":"brief in ${lang}","state":"success|resolved|error","annotations":[{"line":1,"kind":"error|praise|nit|suggestion","title":"Short title","body":"Explanation in ${lang}"}]}
+Line numbers must match the actual code.`;
+
+    const message = `Exercise: ${exerciseID || "unknown"}\nConsole:\n${consoleOutput || "(none)"}\n\nCode:\n${code}`;
+    const result = await runProvider(provider, { system, messages: [{ role: "user", content: message }], maxTokens: 800 });
+    response.json({ raw: result.output, provider: result.provider, model: result.model });
+  } catch (error) {
+    response.status(error.statusCode || 502).json({ error: error.message || "Unknown server error." });
+  }
+});
+
+app.post("/hint", async (request, response) => {
+  try {
+    const { provider, exerciseID, code, userMessage } = request.body || {};
+    if (!provider) throw badRequest("`provider` is required.");
+
+    const system = `You are a Swift coding coach. Give ONE concise hint in French without revealing the full solution. Return only the hint text, no JSON, no markdown.`;
+    const parts = [`Exercise: ${exerciseID || "unknown"}`];
+    if (code) parts.push(`Current code:\n${code}`);
+    if (userMessage) parts.push(`User question: ${userMessage}`);
+
+    const result = await runProvider(provider, { system, messages: [{ role: "user", content: parts.join("\n\n") }], maxTokens: 200 });
+    response.json({ hint: result.output.trim(), provider: result.provider, model: result.model });
+  } catch (error) {
+    response.status(error.statusCode || 502).json({ error: error.message || "Unknown server error." });
+  }
+});
+
 app.use((_request, response) => {
   response.status(404).json({
     error: "Not found.",

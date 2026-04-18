@@ -82,3 +82,16 @@ enum CoachState: String, CaseIterable {
     case success  = "Succès + feedback"
     case resolved = "Résolu"
 }
+
+extension Exercise {
+    static let placeholder = Exercise(
+        id: "placeholder",
+        topic: "Swift",
+        difficulty: "Intermédiaire",
+        title: "En attente…",
+        brief: "Demande un exercice au coach pour commencer. Essaie : \"Je veux un exo sur les dictionnaires\" ou clique sur un thème rapide.",
+        constraints: [],
+        examples: [],
+        signature: "// Génère un exercice pour commencer"
+    )
+}
