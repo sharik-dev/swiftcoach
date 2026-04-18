@@ -4,9 +4,48 @@ struct RemoteProviderStatus: Codable, Identifiable, Equatable {
     let id: String
     let model: String
     let configured: Bool
+    let reachable: Bool?
+    let status: String?
+    let transport: String?
 
     var displayName: String {
         id.capitalized
+    }
+
+    var isReady: Bool {
+        configured && (reachable ?? false) && status == "ready"
+    }
+
+    var statusLabel: String {
+        switch status {
+        case "ready":
+            return "Ready"
+        case "not_configured":
+            return "Not configured"
+        case "model_missing":
+            return "Model missing"
+        case "error":
+            return "Error"
+        default:
+            return configured ? "Configured" : "Unavailable"
+        }
+    }
+
+    var transportLabel: String {
+        switch transport {
+        case "codex_cli":
+            return "Codex CLI"
+        case "claude_cli":
+            return "Claude CLI"
+        case "openai_api":
+            return "OpenAI API"
+        case "anthropic_api":
+            return "Anthropic API"
+        case "ollama":
+            return "Ollama"
+        default:
+            return "Unknown"
+        }
     }
 }
 
@@ -14,10 +53,16 @@ struct ProvidersResponse: Codable, Equatable {
     let providers: [RemoteProviderStatus]
 }
 
+struct ProviderHealthResponse: Codable, Equatable {
+    let providers: [RemoteProviderStatus]
+}
+
 struct ChatRequest: Codable, Equatable {
     let provider: String
     let message: String
     let system: String
+    let temperature: Double?
+    let maxTokens: Int?
 }
 
 struct ChatResponse: Codable, Equatable {

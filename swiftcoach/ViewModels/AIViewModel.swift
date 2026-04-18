@@ -6,6 +6,8 @@ final class AIViewModel: ObservableObject {
     @Published var isThinking = false
     @Published var lastError: String?
     @Published var remoteProviders: [RemoteProviderStatus] = []
+    @Published var isTestingProvider = false
+    @Published var providerTestResult: String?
 
     private var localService: LLMServiceProtocol?
     private let localServiceFactory: () -> LLMServiceProtocol
@@ -58,17 +60,50 @@ final class AIViewModel: ObservableObject {
 
     func refreshRemoteProviders(baseURL: String, selectedProviderID: String?) async {
         do {
-            remoteProviders = try await remoteService.fetchProviders(baseURL: baseURL)
+            async let providersTask = remoteService.fetchProviders(baseURL: baseURL)
+            async let healthTask = remoteService.fetchProviderHealth(baseURL: baseURL)
+            let providers = try await providersTask
+            let health = (try? await healthTask) ?? []
+            remoteProviders = mergeProviders(providers: providers, health: health)
             if let selectedProviderID,
                let provider = remoteProviders.first(where: { $0.id == selectedProviderID }),
-               !provider.configured {
-                lastError = "\(provider.displayName) is exposed by the backend but not configured on the server."
+               !provider.isReady {
+                lastError = "\(provider.displayName) is not ready: \(provider.statusLabel)."
             } else {
                 lastError = nil
             }
         } catch {
             remoteProviders = []
             lastError = "Backend unavailable: \(error.localizedDescription)"
+        }
+    }
+
+    func testSelectedProvider(provider: AppState.AIProvider, backendBaseURL: String) async {
+        guard let remoteProviderID = provider.remoteProviderID else {
+            providerTestResult = "Local MLX does not use the backend test."
+            return
+        }
+
+        isTestingProvider = true
+        providerTestResult = nil
+        defer { isTestingProvider = false }
+
+        do {
+            let response = try await remoteService.generate(
+                baseURL: backendBaseURL,
+                provider: remoteProviderID,
+                systemPrompt: "Tu réponds en un seul mot.",
+                prompt: "Réponds uniquement par OK.",
+                temperature: 0,
+                maxTokens: 8
+            )
+            let sanitized = sanitize(response.output)
+            providerTestResult = sanitized.isEmpty
+                ? "\(provider.displayName) responded with an empty message."
+                : "\(provider.displayName): \(sanitized)"
+            await refreshRemoteProviders(baseURL: backendBaseURL, selectedProviderID: remoteProviderID)
+        } catch {
+            providerTestResult = error.localizedDescription
         }
     }
 
@@ -160,5 +195,24 @@ final class AIViewModel: ObservableObject {
             .replacingOccurrences(of: "<|im_end|>", with: "")
             .replacingOccurrences(of: "<|endoftext|>", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func mergeProviders(providers: [RemoteProviderStatus], health: [RemoteProviderStatus]) -> [RemoteProviderStatus] {
+        let healthByID = Dictionary(uniqueKeysWithValues: health.map { ($0.id, $0) })
+
+        return providers.map { provider in
+            guard let health = healthByID[provider.id] else {
+                return provider
+            }
+
+            return RemoteProviderStatus(
+                id: provider.id,
+                model: provider.model,
+                configured: provider.configured,
+                reachable: health.reachable,
+                status: health.status,
+                transport: health.transport
+            )
+        }
     }
 }

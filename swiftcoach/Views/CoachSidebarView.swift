@@ -2,8 +2,18 @@ import SwiftUI
 
 struct CoachSidebarView: View {
     @ObservedObject var vm: CoachViewModel
+    @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var aiViewModel: AIViewModel
 
     private let quickTopics = ["Dictionnaires", "Optionals", "Protocols", "async/await", "Tri & recherche"]
+
+    private var selectedRemoteProvider: RemoteProviderStatus? {
+        guard let providerID = appState.selectedProvider.remoteProviderID else {
+            return nil
+        }
+
+        return aiViewModel.remoteProviders.first(where: { $0.id == providerID })
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,6 +51,12 @@ struct CoachSidebarView: View {
             .overlay(alignment: .bottom) {
                 Divider().background(Color.scLineSoft)
             }
+
+            providerPanel
+                .padding(12)
+                .overlay(alignment: .bottom) {
+                    Divider().background(Color.scLineSoft)
+                }
 
             // Thread
             ScrollViewReader { proxy in
@@ -150,5 +166,123 @@ struct CoachSidebarView: View {
             }
         }
         .background(Color(hex: "14141a"))
+    }
+
+    private var providerPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("AI PROVIDER")
+                .font(.system(size: 10).weight(.semibold))
+                .foregroundStyle(Color.scInk4)
+                .kerning(1.2)
+
+            Picker("Provider", selection: $appState.selectedProvider) {
+                ForEach(AppState.AIProvider.allCases) { provider in
+                    Text(provider.displayName).tag(provider)
+                }
+            }
+            .pickerStyle(.menu)
+
+            if appState.selectedProvider.requiresLocalModel {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(appState.modelLoadingState == .loaded ? Color.scOk : Color.scAccent5)
+                        .frame(width: 8, height: 8)
+                    Text(appState.selectedModelSize.displayName + " · " + appState.selectedModelSize.subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.scInk2)
+                }
+            } else {
+                TextField("Backend URL", text: $appState.backendBaseURL)
+                    .font(.system(size: 12, design: .monospaced))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Color.scBg2)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(Color.scLineSoft, lineWidth: 1)
+                    )
+
+                if let provider = selectedRemoteProvider {
+                    VStack(alignment: .leading, spacing: 6) {
+                        providerMetaRow(label: "Status", value: provider.statusLabel, tone: provider.isReady ? .scOk : .scAccent5)
+                        providerMetaRow(label: "Transport", value: provider.transportLabel, tone: Color.scInk2)
+                        providerMetaRow(label: "Model", value: provider.model, tone: Color.scInk3)
+                    }
+                } else {
+                    Text("Select a backend provider to see live status.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.scInk3)
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        Task {
+                            await aiViewModel.refreshRemoteProviders(
+                                baseURL: appState.backendBaseURL,
+                                selectedProviderID: appState.selectedProvider.remoteProviderID
+                            )
+                        }
+                    } label: {
+                        Text("Refresh")
+                            .font(.system(size: 11).weight(.semibold))
+                            .foregroundStyle(Color.scInk2)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(Color.scBg2)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        Task {
+                            await aiViewModel.testSelectedProvider(
+                                provider: appState.selectedProvider,
+                                backendBaseURL: appState.backendBaseURL
+                            )
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            if aiViewModel.isTestingProvider {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                            Text(aiViewModel.isTestingProvider ? "Testing..." : "Test Provider")
+                                .font(.system(size: 11).weight(.bold))
+                        }
+                        .foregroundStyle(Color.black)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color.scAccent)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(aiViewModel.isTestingProvider)
+                }
+
+                if let result = aiViewModel.providerTestResult {
+                    Text(result)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.scInk2)
+                        .lineLimit(3)
+                }
+            }
+        }
+    }
+
+    private func providerMetaRow(label: String, value: String, tone: Color) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(label.uppercased())
+                .font(.system(size: 9).weight(.semibold))
+                .foregroundStyle(Color.scInk4)
+                .kerning(1)
+            Text(value)
+                .font(.system(size: 11))
+                .foregroundStyle(tone)
+                .lineLimit(1)
+        }
     }
 }

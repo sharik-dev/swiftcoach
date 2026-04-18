@@ -45,12 +45,31 @@ final class RemoteLLMService {
         return response.providers
     }
 
-    func generate(baseURL: String, provider: String, systemPrompt: String, prompt: String) async throws -> ChatResponse {
+    func fetchProviderHealth(baseURL: String) async throws -> [RemoteProviderStatus] {
+        let response: ProviderHealthResponse = try await request(
+            baseURL: baseURL,
+            path: "/providers/health",
+            method: "GET",
+            body: nil
+        )
+        return response.providers
+    }
+
+    func generate(
+        baseURL: String,
+        provider: String,
+        systemPrompt: String,
+        prompt: String,
+        temperature: Double? = nil,
+        maxTokens: Int? = nil
+    ) async throws -> ChatResponse {
         try await request(
             ChatRequest(
                 provider: provider,
                 message: prompt,
-                system: systemPrompt
+                system: systemPrompt,
+                temperature: temperature,
+                maxTokens: maxTokens
             ),
             baseURL: baseURL,
             path: "/chat"
