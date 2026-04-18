@@ -2,39 +2,47 @@ import SwiftUI
 
 struct MainView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var code = """
+    func solution(_ nums: [Int], _ target: Int) -> [Int] {
+        var seen: [Int: Int] = [:]
+        for (i, n) in nums.enumerated() {
+            if let j = seen[target - n] { return [j, i] }
+            seen[n] = i
+        }
+        return []
+    }
+    """
 
     var body: some View {
         if sizeClass == .regular {
-            splitLayout
+            // iPad & iPhone landscape — côte à côte
+            HStack(spacing: 0) {
+                CodePanelView(code: $code)
+                    .frame(maxWidth: .infinity)
+                Rectangle()
+                    .fill(Color.scLine)
+                    .frame(width: 1)
+                ChatPanelView()
+                    .frame(width: 340)
+            }
+            .background(Color.scShell)
+            .ignoresSafeArea(edges: .bottom)
         } else {
-            tabLayout
+            // iPhone portrait — empilé verticalement
+            GeometryReader { geo in
+                VStack(spacing: 0) {
+                    CodePanelView(code: $code)
+                        .frame(height: geo.size.height * 0.52)
+                    Rectangle()
+                        .fill(Color.scLine)
+                        .frame(height: 1)
+                    ChatPanelView()
+                        .frame(maxHeight: .infinity)
+                }
+            }
+            .background(Color.scShell)
+            .ignoresSafeArea(edges: .bottom)
         }
-    }
-
-    // iPad / landscape — éditeur à gauche, chat à droite
-    private var splitLayout: some View {
-        HStack(spacing: 0) {
-            CodePanelView()
-                .frame(maxWidth: .infinity)
-            Rectangle()
-                .fill(Color.scLine)
-                .frame(width: 1)
-            ChatPanelView()
-                .frame(width: 360)
-        }
-        .ignoresSafeArea(edges: .bottom)
-    }
-
-    // iPhone — deux onglets
-    private var tabLayout: some View {
-        TabView {
-            CodePanelView()
-                .tabItem { Label("Code", systemImage: "doc.text") }
-            ChatPanelView()
-                .tabItem { Label("Assistant", systemImage: "bubble.left") }
-        }
-        .toolbarBackground(Color.scBg2, for: .tabBar)
-        .toolbarColorScheme(.dark, for: .tabBar)
     }
 }
 

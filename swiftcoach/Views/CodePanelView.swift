@@ -2,22 +2,14 @@ import SwiftUI
 
 struct CodePanelView: View {
     @EnvironmentObject private var chatVM: ChatViewModel
-    @State private var code = """
-    func solution(_ nums: [Int], _ target: Int) -> [Int] {
-        var seen: [Int: Int] = [:]
-        for (i, n) in nums.enumerated() {
-            if let j = seen[target - n] { return [j, i] }
-            seen[n] = i
-        }
-        return []
-    }
-    """
+    @Binding var code: String
 
     var body: some View {
         VStack(spacing: 0) {
             headerBar
             Divider().background(Color.scLine)
-            editorArea
+            SyntaxEditorView(text: $code)
+                .background(Color.scShell)
         }
         .background(Color.scShell)
     }
@@ -25,8 +17,8 @@ struct CodePanelView: View {
     private var headerBar: some View {
         HStack(spacing: 12) {
             HStack(spacing: 6) {
-                Image(systemName: "doc.text")
-                    .font(.system(size: 12))
+                Image(systemName: "chevron.left.forwardslash.chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Color.scAccent2)
                 Text("Éditeur")
                     .font(.system(size: 13, design: .monospaced).weight(.semibold))
@@ -43,7 +35,11 @@ struct CodePanelView: View {
                 .foregroundStyle(Color.black)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(chatVM.isStreaming ? Color.scAccent.opacity(0.5) : Color.scAccent)
+                .background(
+                    (chatVM.isStreaming || !chatVM.isModelReady)
+                        ? Color.scAccent.opacity(0.4)
+                        : Color.scAccent
+                )
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             .buttonStyle(.plain)
@@ -54,21 +50,10 @@ struct CodePanelView: View {
         .background(Color.scBg2)
     }
 
-    private var editorArea: some View {
-        TextEditor(text: $code)
-            .font(.system(size: 14, design: .monospaced))
-            .foregroundStyle(Color.scInk)
-            .scrollContentBackground(.hidden)
-            .background(Color.scShell)
-            .padding(16)
-    }
-
     private func analyzeCode() {
-        chatVM.send(text: "Analyse ce code Swift et propose des améliorations.", codeContext: code)
+        chatVM.send(
+            text: "Analyse ce code Swift et propose des améliorations concrètes.",
+            codeContext: code
+        )
     }
-}
-
-#Preview {
-    CodePanelView()
-        .environmentObject(ChatViewModel())
 }

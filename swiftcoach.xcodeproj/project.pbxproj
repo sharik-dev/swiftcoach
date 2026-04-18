@@ -16,6 +16,7 @@
 		120000000000000000000002 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000002 /* MainView.swift */; };
 		120000000000000000000003 /* CodePanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000003 /* CodePanelView.swift */; };
 		120000000000000000000004 /* ChatPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000004 /* ChatPanelView.swift */; };
+		120000000000000000000005 /* SyntaxEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 220000000000000000000005 /* SyntaxEditorView.swift */; };
 		310000000000000000000001 /* LocalLLMClient in Frameworks */ = {isa = PBXBuildFile; productRef = 510000000000000000000001 /* LocalLLMClient */; };
 		310000000000000000000002 /* LocalLLMClientMLX in Frameworks */ = {isa = PBXBuildFile; productRef = 510000000000000000000002 /* LocalLLMClientMLX */; };
 		3023D7943E3EFAC5536014FC /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFC5725F4D440C50BF415963 /* ContentView.swift */; };
@@ -34,6 +35,7 @@
 		220000000000000000000002 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		220000000000000000000003 /* CodePanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodePanelView.swift; sourceTree = "<group>"; };
 		220000000000000000000004 /* ChatPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatPanelView.swift; sourceTree = "<group>"; };
+		220000000000000000000005 /* SyntaxEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxEditorView.swift; sourceTree = "<group>"; };
 		29DFC68B0F1D355F81E749B3 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		39D7834AB9DC0A9A55C4C758 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CFC5725F4D440C50BF415963 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -93,6 +95,7 @@
 				220000000000000000000002 /* MainView.swift */,
 				220000000000000000000003 /* CodePanelView.swift */,
 				220000000000000000000004 /* ChatPanelView.swift */,
+				220000000000000000000005 /* SyntaxEditorView.swift */,
 				210000000000000000000008 /* ModelDownloadView.swift */,
 			);
 			path = Views;
@@ -224,6 +227,7 @@
 				120000000000000000000002 /* MainView.swift in Sources */,
 				120000000000000000000003 /* CodePanelView.swift in Sources */,
 				120000000000000000000004 /* ChatPanelView.swift in Sources */,
+				120000000000000000000005 /* SyntaxEditorView.swift in Sources */,
 				3023D7943E3EFAC5536014FC /* ContentView.swift in Sources */,
 				CE288716231122284948B5D7 /* swiftcoachApp.swift in Sources */,
 			);
